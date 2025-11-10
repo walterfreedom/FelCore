@@ -58,19 +58,13 @@ namespace FelCore
             if (!__instance.RaceProps.Humanlike) return;
             
             var comp = __instance.GetComp<FelPawn_Component>();
+            var mapComponent = map?.GetComponent<FelCore_MapComponent>();
             
             if (comp == null && !respawningAfterLoad)
             {
                 Log.Message($"[FelCore] Injecting FelPawn_Component for {__instance.Name.ToStringShort}");
                 
-                var compProperties = new CompProperties_FelPawn
-                {
-                    personality = "curious and analytical",
-                    role = "colonist",
-                    backstory = "A traveler from a distant, technologically advanced world, still adapting to the harsh realities of the rim.",
-                    systemPrompt = "You are a colonist in the game RimWorld. Behave and speak naturally within that context.",
-                    details = "You retain memories of your past life but are focused on survival and contributing to the colony now."
-                };
+                var compProperties = new CompProperties_FelPawn();
                 
                 comp = new FelPawn_Component();
                 comp.parent = __instance;
@@ -80,10 +74,15 @@ namespace FelCore
                 Log.Message($"[FelCore] Successfully injected and initialized FelPawn_Component for {__instance.Name.ToStringShort}");
             }
             
+            if (comp != null)
+            {
+                mapComponent?.ProfileController?.ApplyDefaults(comp);
+            }
+            
             if (comp != null && (__instance.Faction?.IsPlayer == true || __instance.IsPrisonerOfColony == true))
             {
                 Log.Message($"[FelCore] Registering {__instance.Name.ToStringShort} with MapComponent");
-                map.GetComponent<FelCore_MapComponent>()?.RegisterPawn(comp);
+                mapComponent?.RegisterPawn(comp);
             }
         }
     }

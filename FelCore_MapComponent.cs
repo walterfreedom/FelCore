@@ -7,6 +7,7 @@ using RimWorld;
 using UnityEngine;
 using Verse;
 using FelPawns;
+using FelWorld;
 
 namespace FelCore
 {
@@ -16,19 +17,39 @@ namespace FelCore
         private static readonly HttpClient client = new HttpClient();
         private readonly List<IFelAgent> activePawns = new List<IFelAgent>();
         private Pawn mainCharacter;
+        private FelPawn_ProfileController profileController;
+        private FelWorldQuestManager questManager;
 
         public Pawn MainCharacter => mainCharacter;
+        public FelPawn_ProfileController ProfileController => profileController;
+        public FelWorldQuestManager QuestManager => questManager;
+        public Map Map => map;
         
         public static string BaseUrl = "http://127.0.0.1:4315/v1";
         public static float Temperature = 0.7f;
         public static int MaxTokens = 1000;
 
-        public FelCore_MapComponent(Map map) : base(map) { }
+        public FelCore_MapComponent(Map map) : base(map)
+        {
+            profileController = new FelPawn_ProfileController(this);
+            questManager = new FelWorldQuestManager(this);
+        }
 
         public override void ExposeData()
         {
             base.ExposeData();
             Scribe_References.Look(ref mainCharacter, "mainCharacter");
+            Scribe_Deep.Look(ref profileController, "profileController", this);
+            profileController?.PostExposeData(this);
+            Scribe_Deep.Look(ref questManager, "questManager", this);
+            if (questManager == null)
+            {
+                questManager = new FelWorldQuestManager(this);
+            }
+            else
+            {
+                questManager.Initialize(this);
+            }
         }
         
         public void SetMainCharacter(Pawn pawn)
@@ -54,6 +75,11 @@ namespace FelCore
             {
                 activePawns.Add(pawnComp);
             }
+            
+            if (pawnComp is FelPawn_Component felPawnComponent)
+            {
+                profileController?.OnPawnRegistered(felPawnComponent);
+            }
         }
 
         public void DeregisterPawn(IFelAgent pawnComp)
@@ -61,12 +87,28 @@ namespace FelCore
             activePawns.Remove(pawnComp);
         }
 
+        public override void MapComponentTick()
+        {
+            base.MapComponentTick();
+            profileController?.Tick();
+        }
+        
         public void ProcessAgentImmediately(IFelAgent agent)
         {
             if (agent != null && !agent.Pawn.Dead && agent.IsActive)
             {
                 _ = SendAgentMessageAsync(agent);
             }
+        }
+
+        public Task<FelWorldQuestGenerationResult> GenerateQuestAsync()
+        {
+            if (questManager == null)
+            {
+                questManager = new FelWorldQuestManager(this);
+            }
+
+            return questManager.GenerateQuestAsync();
         }
         
         public static async Task SendAgentMessageAsync(IFelAgent agent)
@@ -91,7 +133,7 @@ namespace FelCore
                 // tools = agent.GetToolDefinitions() // Add once tools are implemented
             };
 
-            var response = await SendRequestAsync(request);
+            var response = await SendChatCompletionAsync(request);
 
             if (response?.choices?.Length > 0)
             {
@@ -119,7 +161,7 @@ namespace FelCore
             }
         }
 
-        private static async Task<ChatCompletionResponse> SendRequestAsync(ChatCompletionRequest request)
+        public static async Task<ChatCompletionResponse> SendChatCompletionAsync(ChatCompletionRequest request)
         {
             try
             {
